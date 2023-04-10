@@ -1,0 +1,489 @@
+---
+title: "Job_Placement"
+author: "Brian Ellis"
+date: "2023-02-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+remove(list = ls())
+library(tidyverse)
+library(caret)
+library(pROC)
+```
+
+```{r}
+# Import dataset
+Jobs <- read.csv("~/Downloads/Job_Placement_Data.csv")
+head(Jobs)
+```
+
+## EDA
+
+```{r}
+str(Jobs)
+```
+
+```{r}
+Jobs %>% 
+  group_by(gender) %>% 
+  summarize(count = n())
+```
+
+We see a greater amount of males are present in the dataset. This will be important for us when considering base rates for job placement.
+
+```{r}
+Jobs %>% 
+  group_by(gender, undergrad_degree) %>% 
+  summarize(N = n())
+```
+
+
+
+```{r}
+# Calculate proportion of each gender in each degree type
+JobProp <-
+  Jobs %>% 
+    count(gender, undergrad_degree) %>% 
+    group_by(gender) %>% 
+    mutate(proportion = n / sum(n))
+JobProp
+```
+
+
+```{r}
+# Visualize proportions to see if there's disparity
+JobProp %>% 
+  ggplot(aes(x = undergrad_degree, y = proportion, group = gender, fill = gender)) +
+  geom_bar(position='dodge', stat='identity') +
+  labs(x = "Undergraduate Degree",
+       y = "Proportion (%)",
+       title = "Unequal Proportionality Between Degree and Gender?")
+
+```
+
+Here we see gender disparity between sexes in the type of undergraduate degree they pursued. A greater proportion of males graduated with 'Sci&Tech' degrees while a greater proportion of females graduated with 'Comm&Mgmt& degrees. We can test to see if these results are statistically significant.
+
+```{r}
+# Split proportions by gender to compare
+DegreeFem <-
+  JobProp %>% 
+  filter(gender == "F")
+DegreeMale <-
+  JobProp %>% 
+  filter(gender == "M")
+t.test(DegreeFem$n, DegreeMale$n)
+```
+
+
+```{r}
+# Visualize distributions of test scores across gender
+Jobs %>% 
+  ggplot(aes(x = ssc_percentage, group = gender, fill = gender, alpha = 0.3)) +
+  geom_density() +
+  labs(title = "Senior secondary exams percentage (10th Grade)")
+```
+
+```{r}
+Jobs %>% 
+  ggplot(aes(x = hsc_percentage, group = gender, fill = gender, alpha = 0.3)) +
+  geom_density() +
+  labs(title = "Higher secondary exams percentage (12th Grade)")
+```
+
+```{r}
+Jobs %>% 
+  ggplot(aes(x = emp_test_percentage, group = gender, fill = gender, alpha = 0.3)) +
+  geom_density() +
+  labs(title = "Aptitude test percentage")
+```
+
+## Model Exploration
+
+
+```{r}
+# Create indicator variable for response
+Jobs <- Jobs %>% 
+  mutate(Placed = ifelse(status == "Placed", 1, 0))
+# Inital log reg
+Degreelr <- glm(Placed ~ gender, family = "binomial", data = Jobs)
+summary(Degreelr)
+```
+
+
+## Logistic Regression
+
+### Feature Selection
+
+```{r}
+# Indicator variables
+Jobs <- Jobs %>% 
+  mutate(Placed = ifelse(status == "Placed", 1, 0))
+
+#Train/Test split
+
+
+#Build Intercept Only Model. NOTE: ~ 1 tells R that you only want an intercept
+int_only_model <- glm(Placed ~ 1, family = binomial, data = Jobs)
+
+#Build model with all potential regressors. 
+#In code below, SurvivedNum ~ . tells R to use all columns in dataset to predict SurvivedNum
+#SurvivedNum ~ . -Survived tells R to use all columns except Survived to predict SurvivedNum
+full_model <- glm(Placed ~ . -status, family = binomial, data = Jobs)
+
+#Perform backward elimination
+#Have R do it all
+stats::step(object = full_model, 
+            scope = list(lower = int_only_model, upper = full_model),
+            data = Train,
+            direction = "backward")
+```
+
+From this backward feature selection, we can remove a few variables from our model. It also shows a positive value for 'genderM' which can indicate some gender bias in favor of males in the dataset.
+
+```{r, eval=F}
+# Create indicators
+Jobs <- Jobs %>% 
+  mutate(degreeType = as.numeric(as.factor(undergrad_degree)),
+         gender = ifelse(gender == "M", 1, 0),
+         work_experience = ifelse(work_experience == "Yes", 1, 0))
+
+# Select vars
+xvars <- c("degreeType", "gender", "work_experience", "hsc_percentage", "degree_percentage", "mba_percent", "ssc_percentage")
+
+# Scale
+Jobs[ , xvars] <- scale(Jobs[ , xvars], center = TRUE, scale = TRUE)
+
+# Train Test split
+#set.seed(123)
+#train_ind <- sample(1:nrow(Jobs), floor(0.8 * nrow(Jobs)))
+#set.seed(NULL)
+
+#Train <- Jobs[train_ind, ]
+#Test <- Jobs[-train_ind, ]
+
+#Build model with indicator as the response
+#model1 <- glm(Placed ~ degreeType + gender + work_experience + hsc_percentage + degree_percentage + mba_percent + ssc_percentage, family = "binomial", data = Jobs)
+model1 <- glm(Placed ~ gender + ssc_percentage, family = "binomial", data = Jobs)
+summary(model1)
+#Establish threshold
+threshold <- 0.5
+
+#Find predicted probabilities for all in dataset
+pred_prob <- predict(model1, newdata = Jobs_prob, type = "response")
+
+#Predict survival
+pred_surv <- ifelse(pred_prob > threshold, 1, 0)
+```
+
+```{r}
+Jobslr <- Jobs %>% 
+  mutate(Placed = ifelse(status == "Placed", 1, 0))
+
+log_reg <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = "binomial", data = Jobslr)
+summary(log_reg)
+```
+
+(Talk about the factor increase when candidate is male, i.e., e^1.308)
+
+Now let's analyze these features and their relationships with gender
+
+```{r}
+# Reload dataset
+Jobs <- read.csv("~/Downloads/Job_Placement_Data.csv")
+# Relationship between gender and ssc_percentage
+Jobs %>% 
+  ggplot(aes(x = gender, y = ssc_percentage)) +
+  geom_point(aes(color = status), position = "jitter") +
+  geom_boxplot(aes(alpha = 0.1))
+```
+
+Even though Females scored higher overall ssc_percentage, males were still hired at a greater rate. This shows gender is a greater predictor for placement as compared with ssc_percentage, a variable we originally thought of as the most important.
+
+```{r}
+# Relationship between gender and ssc_percentage
+Jobs %>% 
+  ggplot(aes(x = gender, y = mba_percent)) +
+  geom_point(aes(color = status), position = "jitter") +
+  geom_boxplot(aes(alpha = 0.1))
+```
+
+
+```{r}
+Jobs %>% 
+  ggplot(aes(x = gender, y = degree_percentage)) +
+  geom_point(aes(color = status), position = "jitter") +
+  geom_boxplot(aes(alpha = 0.1))
+```
+
+For all these variables that are important for the placement, females have a higher overall score. So why do males have a higher job placement probability than females?
+
+Let's use our logistic regression model to predict the probability that 2 new candidates will get hired. These two candidates will have the same attributes across variables, (same exam scores and degree percentage), with the only difference being the gender of the applicant. For the other attributes, we'll use the median value of male applicants.
+
+```{r}
+Female_prob <- predict(log_reg, newdata = data.frame(gender = 'F', ssc_percentage = 65, mba_percent = 61, degree_percentage = 65), type = "response")
+Male_prob <- predict(log_reg, newdata = data.frame(gender = 'M', ssc_percentage = 65, mba_percent = 61, degree_percentage = 65), type = "response")
+
+cat("Female Probability:", Female_prob)
+cat("\nMale Probability:  ", Male_prob)
+```
+
+We see that if we just change gender variable, there is about a 27% difference in probability as to whether the candidate is predicted to be hired when controlling for the variables 'ssc_percentage', 'mba_percent', and 'degree_percentage'. If a female candidate were to have the same attributes as a male, they have a 27% increase in probability of being hired.
+
+```{r}
+Jobs %>% 
+  ggplot(aes(x = ssc_percentage, y = hsc_percentage, color = gender, shape = gender)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~ status)
+```
+
+We can see that there are a greater number of poor performing male candidates bringing the average exam percentages down for the male group. If we look at the distribution between placed members of each gender group, we get a more balanced distribution between gender and exam scores.
+
+
+## Build New model and calculate FP rates etc.
+
+We will create a new logistic regression model with the 4 variables we find most interesting and impactful upon the 'Placed' variable: 'ssc_percentage', 'mba_percent', 'degree_percentage', and 'gender'. First, we will scale these numeric variables, and perform 10-fold cross-validation because the dataset is so small that a random split can make a big difference.
+
+```{r}
+# Create indicator variables
+xvars <- c("ssc_percentage", "mba_percent", "degree_percentage")
+# Scale
+Jobslr[, xvars] <- scale(Jobslr[ , xvars], center = TRUE, scale = TRUE)
+```
+
+```{r}
+#Create and permute fold values
+num_folds <- 10
+folds <- cut(x = 1:nrow(Jobslr), breaks = num_folds, labels = FALSE)
+
+set.seed(123)
+folds <- sample(folds)
+set.seed(NULL)
+head(folds)
+```
+
+
+```{r}
+#Step 2: # Set up storage
+acc_vec <- rep(NA, num_folds)
+auc_vec <- rep(NA, num_folds)
+#Step 3: # Loop for cycling through the folds
+for (i in 1:num_folds) {
+	# Train/Test split
+	Test_ind <- which(folds == i)
+	Test <- Jobslr[Test_ind, ]
+	Train <- Jobslr[-Test_ind, ]
+	# Build model
+	temp_lr <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = binomial, data = Train)
+	# Make predictions
+	Test$model_prob <- predict(temp_lr, Test, type = "response")
+	
+  #Once we choose the threshold for your decision, we can transform those probabilities into successes and failures (1’s and 0’s), and we save them under the     variable “model_pred”.
+
+  #Similarly, we tranform the “Yes” and “No” in the variable dental.visit to 1’s and 0’s, we call the variable “visit_binary”.
+
+  Test_temp <- Test  %>% mutate(model_pred = 1*(model_prob > .5) + 0)
+                                 
+
+  Test_temp <- Test_temp %>% mutate(accurate = 1*(model_pred == Placed))
+  acc_vec[i] <- sum(Test_temp$accurate)/nrow(Test_temp)
+  # Calculate AUC
+  test_roc <- roc(response = Test_temp$Placed,
+                predictor = Test$model_prob,
+                plot = F,
+                print.auc = TRUE,
+                legacy.axes = TRUE)
+
+  #extract AUC value
+  auc_vec[i] <- as.numeric(test_roc$auc)
+}
+# Find average
+cat("Mean accuracy:", mean(acc_vec))
+cat("\nMean AUC:", mean(auc_vec))
+#cor(Jobs$hsc_percentage, Jobs$ssc_percentage)
+```
+
+The mean accuracy of our logistic regression model is 85.6% with an average AUC of 0.917 which indicates our model is doing well. Let's isolate the genders and analyze the rates of false positives/negatives.
+
+```{r}
+lr <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = binomial, data = Jobslr)
+# Make predictions
+Jobslr$model_prob <- predict(lr, Jobslr, type = "response")
+
+Jobslr <- Jobslr  %>% mutate(model_pred = 1*(model_prob > .5))
+                               
+
+Jobslr <- Jobslr %>% mutate(accurate = 1*(model_pred == Placed))
+acc <- sum(Jobslr$accurate)/nrow(Jobslr)
+# Calculate AUC
+test_roc <- roc(response = Jobslr$Placed,
+              predictor = Jobslr$model_prob,
+              plot = TRUE,
+              print.auc = TRUE,
+              legacy.axes = TRUE)
+```
+
+
+```{r}
+#Create confusion matrix using caret library
+confusionMatrix(data = as.factor(Jobslr$model_pred),
+                reference = as.factor(Jobslr$Placed),
+                positive = "1")
+```
+
+```{r}
+# Confusion matrix by gender
+Males <- Jobslr %>% 
+  filter(gender == "M")
+Females <- Jobslr %>% 
+  filter(gender == "F")
+
+# Males
+confusionMatrix(data = as.factor(Males$model_pred),
+                reference = as.factor(Males$Placed),
+                positive = "1")
+
+# Females
+confusionMatrix(data = as.factor(Females$model_pred),
+                reference = as.factor(Females$Placed),
+                positive = "1")
+```
+
+```{r}
+# Table format
+table(Females$model_pred, Females$Placed)
+```
+
+Using this table we can calculate parity rates based upon the predictions of females placement from our generated model:
+
+False Positive Rate: $$ \frac{FP}{FP+TN} = \frac{8}{8+20} \approx 0.2857$$
+
+False Negative Rate: $$ \frac{FN}{FN+TP} = \frac{7}{7+41} \approx 0.1458$$
+
+```{r}
+table(pred_surv, Test$Placed)
+```
+
+
+```{r}
+#Create confusion matrix using caret library
+confusionMatrix(data = as.factor(pred_surv),
+                reference = as.factor(Test$Placed),
+                positive = "1")
+```
+
+```{r}
+#Using roc function from pROC library to create ROC Curve
+test_roc <- roc(response = Test$Placed,
+                predictor = pred_prob,
+                plot = TRUE,
+                print.auc = TRUE,
+                legacy.axes = TRUE)
+```
+
+
+```{r}
+JobsLR <- Jobs %>% 
+  mutate(Placed = ifelse(status == "Placed", 1, 0)
+        )
+# Create logisitic Regression model
+lr_model <- glm(Placed ~ hsc_percentage + ssc_percentage + mba_percent + gender + undergrad_degree, family = binomial, data = JobsLR)
+summary(lr_model)
+```
+
+From our logistic regression model, we see a significant p-value associated with being Male. Our 'Gender' variable is set to 1 if the candidate is a male, and the model tells us that being male gives a statistically significant (less than 0.5 pval) increase in probability of being placed in a job if gender is equal to male.
+
+```{r}
+Jobs %>% 
+  group_by(gender) %>% 
+  summarize(N = n())
+```
+
+
+
+```{r}
+LMClass <-
+  Jobs %>% 
+  mutate(placed = ifelse(status == "Placed", 1, 0))
+
+model <- lm(placed ~ gender, data = LMClass)
+summary(model)
+```
+
+```{r}
+LMClass <-
+  LMClass %>% 
+  mutate(work = ifelse(work_experience == "Yes", 1, 0),
+         sex = ifelse(gender == "M", 1, 0))
+
+model2 <- lm(placed ~ work + sex + hsc_percentage + emp_test_percentage + mba_percent, data = LMClass)
+summary(model2)
+```
+
+```{r}
+model3 <- lm(placed ~ . , data = Train)
+coefficients(model3)
+yhat = predict(model3, newdata = Test)
+ggplot(Test, aes(x = yhat, y = Test$placed)) +
+                  geom_point() +
+                 geom_abline(intercept = 0, slope = 1, color = "green") +
+  labs(title = "Model 3 Predictions",
+       x = "Predicted values",
+       y = "Observed values")
+```
+
+
+```{r}
+#Scale my numeric variables
+xvars <- c("sex", "work", "hsc_percentage", "mba_percent")
+LMClass[ , xvars] <- scale(LMClass[ , xvars], center = TRUE, scale = TRUE)
+
+#Training/Testing split
+set.seed(123)
+train_ind <- sample(1:nrow(LMClass), floor(0.85 * nrow(LMClass)))
+set.seed(NULL)
+
+Train <- LMClass[train_ind, ]
+Test <- LMClass[-train_ind, ]
+```
+
+```{r}
+maxK <- 75
+mse_vec <- rep(NA, maxK)
+rmse_vec <- rep(NA, maxK)
+
+#Loop
+for(i in 1:maxK){
+  #Build Model
+  knn_res <- knn.reg(train = Train[ , xvars, drop = FALSE],
+                   test = Test[ , xvars, drop = FALSE],
+                   y = Train$placed,
+                   k = i)
+  
+  #Find MSE
+  mse_vec[i] <- mean((Test$placed - knn_res$pred)^2)
+  
+  #Find RMSE
+  rmse_vec[i] <- sqrt(mse_vec[i])
+}
+```
+
+```{r}
+temp_df <- data.frame(k = 1:maxK, rmse = rmse_vec)
+
+# Create plot
+ggplot(temp_df, aes(x = k, y = rmse)) +
+  geom_line() +
+  labs(x = "Number of Nearest Neighbors (k)",
+       y = "Root Mean Square Error (RMSE)")
+
+which.min(rmse_vec)
+
+rmse_vec[which.min(rmse_vec)]
+```
+

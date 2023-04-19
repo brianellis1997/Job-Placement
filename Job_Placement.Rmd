@@ -37,6 +37,15 @@ Jobs %>%
 We see a greater amount of males are present in the dataset. This will be important for us when considering base rates for job placement.
 
 ```{r}
+# Proportion of males and females placed
+Jobs %>% 
+  count(gender, status) %>% 
+  group_by(gender) %>% 
+  summarize(status = status, prop = n / sum(n))
+```
+
+
+```{r}
 Jobs %>% 
   group_by(gender, undergrad_degree) %>% 
   summarize(N = n())
@@ -245,7 +254,7 @@ Jobs %>%
 We can see that there are a greater number of poor performing male candidates bringing the average exam percentages down for the male group. If we look at the distribution between placed members of each gender group, we get a more balanced distribution between gender and exam scores.
 
 
-## Build New model and calculate FP rates etc.
+## Equalized Odds
 
 We will create a new logistic regression model with the 4 variables we find most interesting and impactful upon the 'Placed' variable: 'ssc_percentage', 'mba_percent', 'degree_percentage', and 'gender'. First, we will scale these numeric variables, and perform 10-fold cross-validation because the dataset is so small that a random split can make a big difference.
 
@@ -255,6 +264,95 @@ xvars <- c("ssc_percentage", "mba_percent", "degree_percentage")
 # Scale
 Jobslr[, xvars] <- scale(Jobslr[ , xvars], center = TRUE, scale = TRUE)
 ```
+
+```{r}
+plot(x = Jobslr$ssc_percentage, y = Jobslr$Placed)
+
+glm.fit = glm(Placed ~ ssc_percentage + mba_percent + degree_percentage + gender, family = binomial, data = Jobslr)
+lines(Jobslr$ssc_percentage, glm.fit$fitted.values)
+```
+
+```{r}
+# set boundaries to square
+par(pty = "s")
+# Plot ROC curve
+roc(Jobslr$Placed, glm.fit$fitted.values, plot = T, legacy.axes = T, percent = T, 
+    xlab = "False Positive Percentage", ylab = "True Positive Percentage",
+    col = "dodgerblue", lwd = 4, print.auc = T)
+```
+```{r}
+# Obtain thresholds from ROC curve
+roc.info <- roc(Jobslr$Placed, glm.fit$fitted.values, legacy.axes = T)
+
+roc.df <- data.frame(
+  tpp = roc.info$sensitivities * 100,
+  fpp = (1 - roc.info$sensitivities) * 100,
+  thresholds = roc.info$thresholds
+)
+head(roc.df)
+tail(roc.df)
+```
+
+```{r}
+# Append fitted values into data
+glm.fit$data <- glm.fit$data %>% 
+  mutate(values = glm.fit$fitted.values)
+
+# Create male and female datasets
+Males <- glm.fit$data %>% 
+  filter(gender == "M")
+
+Females <- glm.fit$data %>% 
+  filter(gender == "F")
+
+# Overlap ROC curves for males and females
+par(pty = "s")
+roc(Males$Placed, Males$values, plot = T, legacy.axes = T, percent = T, 
+    xlab = "False Positive Percentage", ylab = "True Positive Percentage",
+    col = "dodgerblue", lwd = 4, print.auc = T)
+plot.roc(Females$Placed, Females$values, add = T, percent = T,
+    col = "limegreen", lwd = 4, print.auc = T, print.auc.y = 40)
+legend("bottomright", legend = c("Males", "Females"), col = c("dodgerblue", "limegreen"), lwd = 4)
+
+# Set draw graph space back to default
+par(pty = "m")
+```
+
+We see that Males have a greater AUC score than Females. We can isolate the areas where the ROC curves intersect to determine which thresholds for males and females would be ideal.
+
+```{r}
+# Obtain thresholds from ROC curve for Males and Females
+roc_males.info <- roc(Males$Placed, Males$values, legacy.axes = T)
+roc_males.df <- data.frame(
+  tpp = roc_males.info$sensitivities * 100,
+  fpp = (1 - roc_males.info$sensitivities) * 100,
+  thresholds = roc_males.info$thresholds
+)
+
+roc_females.info <- roc(Females$Placed, Females$values, legacy.axes = T)
+roc_females.df <- data.frame(
+  tpp = roc_females.info$sensitivities * 100,
+  fpp = (1 - roc_females.info$sensitivities) * 100,
+  thresholds = roc_females.info$thresholds
+)
+
+# Isolate thresholds where TPP and FPP are optimal
+roc_males.df[roc_males.df$tpp > 85 & roc_males.df$tpp < 95, ]
+roc_females.df[roc_females.df$tpp > 85 & roc_females.df$tpp < 95, ]
+```
+
+We should be looking for threshold values for males and females where the true and false positive rates are similar. This occurs when Male and Female tpp is 89 and also when tpp is 94. The threshold for males and females for both of these tpp rates are 0.65 and 0.43, and 0.45 and 0.36 respectively.
+
+This difference between threshold values indicates a discrepancy between the success rate of males and females in the dataset when considering 'Placed' as a successful outcome. When moving forward with our unbiased model, we should use either of these threshold values for males and females respectively to achieve equalized odds.
+
+
+
+
+
+
+
+
+
 
 ```{r}
 #Create and permute fold values

@@ -343,11 +343,36 @@ roc_females.df[roc_females.df$tpp > 85 & roc_females.df$tpp < 95, ]
 
 We should be looking for threshold values for males and females where the true and false positive rates are similar. This occurs when Male and Female tpp is 89 and also when tpp is 94. The threshold for males and females for both of these tpp rates are 0.65 and 0.43, and 0.45 and 0.36 respectively.
 
-This difference between threshold values indicates a discrepancy between the success rate of males and females in the dataset when considering 'Placed' as a successful outcome. When moving forward with our unbiased model, we should use either of these threshold values for males and females respectively to achieve equalized odds.
+This difference between threshold values indicates a discrepancy between the success rate of males and females in the dataset when considering 'Placed' as a successful outcome. When moving forward with our unbiased model, we should use either of these set of threshold values for males and females to achieve equalized odds.
 
+```{r}
+#Establish male threshold
+male_thresh <- 0.65
 
+#Establish female threshold
+female_thresh <- 0.43
 
+#Find predicted probabilities for all in dataset
+male_prob <- predict(glm.fit, newdata = Males, type = "response")
+female_prob <- predict(glm.fit, newdata = Females, type = "response")
 
+#Predict placed
+male_pred <- ifelse(male_prob > male_thresh, 1, 0)
+female_pred <- ifelse(female_prob > female_thresh, 1, 0)
+
+# Create confusion matrices
+# Male matrix
+confusionMatrix(data = as.factor(male_pred),
+                reference = as.factor(Males$Placed),
+                positive = "1")
+
+# Female matrix
+confusionMatrix(data = as.factor(female_pred),
+                reference = as.factor(Females$Placed),
+                positive = "1")
+```
+
+Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, amongst genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females.
 
 
 

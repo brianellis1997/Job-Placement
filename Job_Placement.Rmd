@@ -22,6 +22,18 @@ Jobs <- read.csv("~/Downloads/Job_Placement_Data.csv")
 head(Jobs)
 ```
 
+## Introduction
+
+Based on this dataset, the first important question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge a dataset.
+
+### Why equalized odds? 
+
+We are choosing to build a model that satisfies equalized odds to benefit the applicants in the dataset. Equalized odds will bring about similar true and false positive rates amongst males and females being hired in the dataset. This is good news for the applicants as they can rest assured they are not being discriminated against based on any external factors, the qualified candidates from each group are hired at an equal rate.
+
+### Why not predictive value parity?
+
+Males and females in our dataset are not hired at equal rates and do not have equal measurements and statistics. Predicitve value parity would benefit the employers hiring candidates but not necessarily the candidates. 
+
 ## EDA
 
 ```{r}
@@ -378,109 +390,6 @@ Based on the confusion matrices produced for males and females respectively, we 
 
 
 
-
-```{r}
-#Create and permute fold values
-num_folds <- 10
-folds <- cut(x = 1:nrow(Jobslr), breaks = num_folds, labels = FALSE)
-
-set.seed(123)
-folds <- sample(folds)
-set.seed(NULL)
-head(folds)
-```
-
-
-```{r}
-#Step 2: # Set up storage
-acc_vec <- rep(NA, num_folds)
-auc_vec <- rep(NA, num_folds)
-#Step 3: # Loop for cycling through the folds
-for (i in 1:num_folds) {
-	# Train/Test split
-	Test_ind <- which(folds == i)
-	Test <- Jobslr[Test_ind, ]
-	Train <- Jobslr[-Test_ind, ]
-	# Build model
-	temp_lr <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = binomial, data = Train)
-	# Make predictions
-	Test$model_prob <- predict(temp_lr, Test, type = "response")
-	
-  #Once we choose the threshold for your decision, we can transform those probabilities into successes and failures (1’s and 0’s), and we save them under the     variable “model_pred”.
-
-  #Similarly, we tranform the “Yes” and “No” in the variable dental.visit to 1’s and 0’s, we call the variable “visit_binary”.
-
-  Test_temp <- Test  %>% mutate(model_pred = 1*(model_prob > .5) + 0)
-                                 
-
-  Test_temp <- Test_temp %>% mutate(accurate = 1*(model_pred == Placed))
-  acc_vec[i] <- sum(Test_temp$accurate)/nrow(Test_temp)
-  # Calculate AUC
-  test_roc <- roc(response = Test_temp$Placed,
-                predictor = Test$model_prob,
-                plot = F,
-                print.auc = TRUE,
-                legacy.axes = TRUE)
-
-  #extract AUC value
-  auc_vec[i] <- as.numeric(test_roc$auc)
-}
-# Find average
-cat("Mean accuracy:", mean(acc_vec))
-cat("\nMean AUC:", mean(auc_vec))
-#cor(Jobs$hsc_percentage, Jobs$ssc_percentage)
-```
-
-The mean accuracy of our logistic regression model is 85.6% with an average AUC of 0.917 which indicates our model is doing well. Let's isolate the genders and analyze the rates of false positives/negatives.
-
-```{r}
-lr <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = binomial, data = Jobslr)
-# Make predictions
-Jobslr$model_prob <- predict(lr, Jobslr, type = "response")
-
-Jobslr <- Jobslr  %>% mutate(model_pred = 1*(model_prob > .5))
-                               
-
-Jobslr <- Jobslr %>% mutate(accurate = 1*(model_pred == Placed))
-acc <- sum(Jobslr$accurate)/nrow(Jobslr)
-# Calculate AUC
-test_roc <- roc(response = Jobslr$Placed,
-              predictor = Jobslr$model_prob,
-              plot = TRUE,
-              print.auc = TRUE,
-              legacy.axes = TRUE)
-```
-
-
-```{r}
-#Create confusion matrix using caret library
-confusionMatrix(data = as.factor(Jobslr$model_pred),
-                reference = as.factor(Jobslr$Placed),
-                positive = "1")
-```
-
-```{r}
-# Confusion matrix by gender
-Males <- Jobslr %>% 
-  filter(gender == "M")
-Females <- Jobslr %>% 
-  filter(gender == "F")
-
-# Males
-confusionMatrix(data = as.factor(Males$model_pred),
-                reference = as.factor(Males$Placed),
-                positive = "1")
-
-# Females
-confusionMatrix(data = as.factor(Females$model_pred),
-                reference = as.factor(Females$Placed),
-                positive = "1")
-```
-
-```{r}
-# Table format
-table(Females$model_pred, Females$Placed)
-```
 
 Using this table we can calculate parity rates based upon the predictions of females placement from our generated model:
 

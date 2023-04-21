@@ -24,7 +24,7 @@ head(Jobs)
 
 ## Introduction
 
-Based on this dataset, the first important question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge a dataset.
+The first question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge this dataset. We could satisfy demographic parity easily by selecting an equal proportion of males and females from the dataset with no regard for their merits as potential employees. This doesn't seem like an ideal approach. A better approach would be to hire an equal proportion of males and females whom are qualified for the job. This leads us to equalized odds, which will be the focus of our project and the metric to which we will develop a new model to satisfy.
 
 ### Why equalized odds? 
 
@@ -32,7 +32,7 @@ We are choosing to build a model that satisfies equalized odds to benefit the ap
 
 ### Why not predictive value parity?
 
-Males and females in our dataset are not hired at equal rates and do not have equal measurements and statistics. Predicitve value parity would benefit the employers hiring candidates but not necessarily the candidates. 
+Males and females in our dataset are not hired at equal rates and do not have equal measurements and statistics, as we will see in our exploratory data analysis. Predicitve value parity would benefit the employers hiring candidates but not necessarily the candidates. 
 
 ## EDA
 
@@ -47,6 +47,16 @@ Jobs %>%
 ```
 
 We see a greater amount of males are present in the dataset. This will be important for us when considering base rates for job placement.
+
+```{r}
+Jobs %>% 
+  group_by(gender) %>% 
+  summarize(Count = n(),
+            Placed = sum(status == "Placed"),
+            Not_Placed = sum(status == "Not Placed"))
+```
+
+Here we see the disparity between rates of placement of males and females in the dataset. We can see this more clearly by calculating the proportion of each gender that was placed.
 
 ```{r}
 # Proportion of males and females placed
@@ -92,13 +102,19 @@ Here we see gender disparity between sexes in the type of undergraduate degree t
 ```{r}
 # Split proportions by gender to compare
 DegreeFem <-
-  JobProp %>% 
-  filter(gender == "F")
+  Jobs %>% 
+  filter(gender == "F") %>% 
+  group_by(gender, undergrad_degree) %>% 
+  summarise(count = n())
 DegreeMale <-
-  JobProp %>% 
-  filter(gender == "M")
-t.test(DegreeFem$n, DegreeMale$n)
+  Jobs %>% 
+  filter(gender == "M") %>% 
+  group_by(gender, undergrad_degree) %>% 
+  summarise(count = n())
+chisq.test(DegreeFem$count, DegreeMale$count)
 ```
+
+We don't see a statistically significant result when comparing males and females to undergraduate degree type.
 
 
 ```{r}
@@ -123,6 +139,32 @@ Jobs %>%
   labs(title = "Aptitude test percentage")
 ```
 
+```{r}
+Jobs %>% 
+  ggplot(aes(x = mba_percent, group = gender, fill = gender, alpha = 0.3)) +
+  geom_density() +
+  labs(x = "MBA Test Percentage",
+       y = "Density")
+```
+
+```{r}
+Jobs %>% 
+  ggplot(aes(x = degree_percentage, group = gender, fill = gender, alpha = 0.3)) +
+  geom_density() +
+  labs(x = "Degree Percentage",
+       y = "Density")
+```
+
+```{r}
+Jobs %>% 
+  ggplot(aes(x = work_experience, fill = gender)) +
+  geom_histogram(stat = "count")
+```
+
+We can see a greater proportion of females don't have previous work experience. This could factor into he decision maker's process when selecting candidates to place into a job.
+
+Now that we know roughly what our data looks like, especially when comparing amongst genders, we can begin building some initital models to help us determine which features are most important and which ones to include in our final model.
+
 ## Model Exploration
 
 
@@ -131,12 +173,11 @@ Jobs %>%
 Jobs <- Jobs %>% 
   mutate(Placed = ifelse(status == "Placed", 1, 0))
 # Inital log reg
-Degreelr <- glm(Placed ~ gender, family = "binomial", data = Jobs)
-summary(Degreelr)
+genderlm <- lm(Placed ~ gender, data = Jobs)
+summary(genderlm)
 ```
 
-
-## Logistic Regression
+This simple linear regression model has a positive coefficient associated with being male, when gender is the only variable being considered for job placement.
 
 ### Feature Selection
 
@@ -145,19 +186,13 @@ summary(Degreelr)
 Jobs <- Jobs %>% 
   mutate(Placed = ifelse(status == "Placed", 1, 0))
 
-#Train/Test split
-
-
 #Build Intercept Only Model. NOTE: ~ 1 tells R that you only want an intercept
 int_only_model <- glm(Placed ~ 1, family = binomial, data = Jobs)
 
 #Build model with all potential regressors. 
-#In code below, SurvivedNum ~ . tells R to use all columns in dataset to predict SurvivedNum
-#SurvivedNum ~ . -Survived tells R to use all columns except Survived to predict SurvivedNum
 full_model <- glm(Placed ~ . -status, family = binomial, data = Jobs)
 
 #Perform backward elimination
-#Have R do it all
 stats::step(object = full_model, 
             scope = list(lower = int_only_model, upper = full_model),
             data = Train,
@@ -195,17 +230,16 @@ summary(model1)
 threshold <- 0.5
 
 #Find predicted probabilities for all in dataset
-pred_prob <- predict(model1, newdata = Jobs_prob, type = "response")
+pred_prob <- predict(model1, newdata = Jobs, type = "response")
 
 #Predict survival
 pred_surv <- ifelse(pred_prob > threshold, 1, 0)
 ```
 
-```{r}
-Jobslr <- Jobs %>% 
-  mutate(Placed = ifelse(status == "Placed", 1, 0))
+Here we see that including another variable in our model, *ssc_percentage*, shows a greater importance amongst the gender variable.
 
-log_reg <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = "binomial", data = Jobslr)
+```{r}
+log_reg <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = "binomial", data = Jobs)
 summary(log_reg)
 ```
 
@@ -272,29 +306,31 @@ We will create a new logistic regression model with the 4 variables we find most
 
 ```{r}
 # Create indicator variables
+Jobs <- Jobs %>% 
+  mutate(Placed = ifelse(status == "Placed", 1, 0))
 xvars <- c("ssc_percentage", "mba_percent", "degree_percentage")
 # Scale
-Jobslr[, xvars] <- scale(Jobslr[ , xvars], center = TRUE, scale = TRUE)
+Jobs[, xvars] <- scale(Jobs[ , xvars], center = TRUE, scale = TRUE)
 ```
 
 ```{r}
-plot(x = Jobslr$ssc_percentage, y = Jobslr$Placed)
+plot(x = Jobs$ssc_percentage, y = Jobs$Placed)
 
-glm.fit = glm(Placed ~ ssc_percentage + mba_percent + degree_percentage + gender, family = binomial, data = Jobslr)
-lines(Jobslr$ssc_percentage, glm.fit$fitted.values)
+glm.fit = glm(Placed ~ ssc_percentage + mba_percent + degree_percentage + gender, family = binomial, data = Jobs)
+lines(Jobs$ssc_percentage, glm.fit$fitted.values)
 ```
 
 ```{r}
 # set boundaries to square
 par(pty = "s")
 # Plot ROC curve
-roc(Jobslr$Placed, glm.fit$fitted.values, plot = T, legacy.axes = T, percent = T, 
+roc(Jobs$Placed, glm.fit$fitted.values, plot = T, legacy.axes = T, percent = T, 
     xlab = "False Positive Percentage", ylab = "True Positive Percentage",
     col = "dodgerblue", lwd = 4, print.auc = T)
 ```
 ```{r}
 # Obtain thresholds from ROC curve
-roc.info <- roc(Jobslr$Placed, glm.fit$fitted.values, legacy.axes = T)
+roc.info <- roc(Jobs$Placed, glm.fit$fitted.values, legacy.axes = T)
 
 roc.df <- data.frame(
   tpp = roc.info$sensitivities * 100,
@@ -384,7 +420,7 @@ confusionMatrix(data = as.factor(female_pred),
                 positive = "1")
 ```
 
-Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, amongst genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females.
+Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, between genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females, which should satisfy employers.
 
 
 

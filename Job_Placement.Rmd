@@ -19,16 +19,16 @@ library(pROC)
 ```{r}
 # Import dataset
 Jobs <- read.csv("~/Downloads/Job_Placement_Data.csv")
-head(Jobs)
+knitr::kable(head(Jobs))
 ```
 
 ## Introduction
 
-The first question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge this dataset. We could satisfy demographic parity easily by selecting an equal proportion of males and females from the dataset with no regard for their merits as potential employees. This doesn't seem like an ideal approach. A better approach would be to hire an equal proportion of males and females whom are qualified for the job. This leads us to equalized odds, which will be the focus of our project and the metric to which we will develop a new model to satisfy.
+The first question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge this dataset. We could satisfy demographic parity easily by selecting an equal proportion of males and females from the dataset with no regard for their merits as potential employees - this doesn't seem like an ideal approach. A better approach would be to hire an equal proportion of males and females whom are qualified for the job. This leads us to equalized odds, which will be the focus of our project and the metric to which we will develop a new model to satisfy.
 
 ### Why equalized odds? 
 
-We are choosing to build a model that satisfies equalized odds to benefit the applicants in the dataset. Equalized odds will bring about similar true and false positive rates amongst males and females being hired in the dataset. This is good news for the applicants as they can rest assured they are not being discriminated against based on any external factors, the qualified candidates from each group are hired at an equal rate.
+We are choosing to build a model that satisfies equalized odds to benefit the applicants in the dataset. Equalized odds will bring about similar true and false positive rates amongst males and females being hired in the dataset. This is good news for the applicants as they can rest assured they are not being discriminated against based on any external factors.
 
 ### Why not predictive value parity?
 
@@ -125,28 +125,35 @@ We don't see a statistically significant result when comparing males and females
 Jobs %>% 
   ggplot(aes(x = ssc_percentage, group = gender, fill = gender, alpha = 0.3)) +
   geom_density() +
-  labs(title = "Senior secondary exams percentage (10th Grade)")
+  labs(title = "Senior secondary exams percentage (10th Grade)",
+       x = "Percent",
+       y = "Density")
 ```
 
 ```{r}
 Jobs %>% 
   ggplot(aes(x = hsc_percentage, group = gender, fill = gender, alpha = 0.3)) +
   geom_density() +
-  labs(title = "Higher secondary exams percentage (12th Grade)")
+  labs(title = "Higher secondary exams percentage (12th Grade)",
+       x = "Percent",
+       y = "Density")
 ```
 
 ```{r}
 Jobs %>% 
   ggplot(aes(x = emp_test_percentage, group = gender, fill = gender, alpha = 0.3)) +
   geom_density() +
-  labs(title = "Aptitude test percentage")
+  labs(title = "EMP (Aptitude Test) Percentage",
+       x = "Percent",
+       y = "Density")
 ```
 
 ```{r}
 Jobs %>% 
   ggplot(aes(x = mba_percent, group = gender, fill = gender, alpha = 0.3)) +
   geom_density() +
-  labs(x = "MBA Test Percentage",
+  labs(title = "MBA Test Percentage",
+       x = "Percent",
        y = "Density")
 ```
 
@@ -154,19 +161,23 @@ Jobs %>%
 Jobs %>% 
   ggplot(aes(x = degree_percentage, group = gender, fill = gender, alpha = 0.3)) +
   geom_density() +
-  labs(x = "Degree Percentage",
+  labs(title = "Degree Percentage",
+       x = "Percent",
        y = "Density")
 ```
 
 ```{r}
 Jobs %>% 
   ggplot(aes(x = work_experience, fill = gender)) +
-  geom_histogram(stat = "count")
+  geom_histogram(stat = "count") +
+  labs(title = "Work Experience by Gender",
+       x = "Work Experience",
+       y = "Count")
 ```
 
 We can see a greater proportion of females don't have previous work experience. This could factor into he decision maker's process when selecting candidates to place into a job.
 
-Now that we know roughly what our data looks like, especially when comparing amongst genders, we can begin building some initital models to help us determine which features are most important and which ones to include in our final model.
+Now that we know roughly what our data looks like when comparing amongst genders, we can begin building some initial models to help us determine which features are most important and which ones to include in our final model.
 
 ## Model Exploration
 

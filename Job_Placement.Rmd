@@ -66,6 +66,9 @@ Jobs %>%
   summarize(status = status, prop = n / sum(n))
 ```
 
+72% of male applicants were placed, while only 63% of female applicants ended up being placed. We can do a quick demographic parity check: $$\frac {FemalesPlaced}{Males Placed} = \frac{0.6315789}{0.7194245} = 0.87789$$
+
+This leads to a demographic parity value of roughly 0.878 which is not bad but not great either. Our goal is not to satisfy demographic parity anyways but it's good to see where this dataset lies with respect to it and this also shows how females in the dataset are in the minority class by a noticeable difference.
 
 ```{r}
 Jobs %>% 
@@ -244,6 +247,7 @@ summary(log_reg)
 ```
 
 (Talk about the factor increase when candidate is male, i.e., e^1.308)
+What this model is telling us is, that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of a female. Alternatively, we can say that a male candidate has 270% $$3.7 - 1 = 2.7$$ more odds of being hired than a female candidate.
 
 Now let's analyze these features and their relationships with gender
 
@@ -421,17 +425,6 @@ confusionMatrix(data = as.factor(female_pred),
 ```
 
 Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, between genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females, which should satisfy employers.
-
-
-
-
-
-
-Using this table we can calculate parity rates based upon the predictions of females placement from our generated model:
-
-False Positive Rate: $$ \frac{FP}{FP+TN} = \frac{8}{8+20} \approx 0.2857$$
-
-False Negative Rate: $$ \frac{FN}{FN+TP} = \frac{7}{7+41} \approx 0.1458$$
 
 
 

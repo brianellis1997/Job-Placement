@@ -14,21 +14,22 @@ remove(list = ls())
 library(tidyverse)
 library(caret)
 library(pROC)
+library(glmnet)
 ```
 
 ```{r}
 # Import dataset
 Jobs <- read.csv("~/Downloads/Job_Placement_Data.csv")
-knitr::kable(head(Jobs))
+head(Jobs)
 ```
 
 ## Introduction
 
-The first question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge this dataset. We could satisfy demographic parity easily by selecting an equal proportion of males and females from the dataset with no regard for their merits as potential employees - this doesn't seem like an ideal approach. A better approach would be to hire an equal proportion of males and females whom are qualified for the job. This leads us to equalized odds, which will be the focus of our project and the metric to which we will develop a new model to satisfy.
+The first question we must answer is which metrics we will use to judge fairness. Demographic parity, while nice in concept, doesn't seem like the best metric to judge this dataset because it doesn't take into account the quality of the candidate. We could satisfy demographic parity easily by selecting an equal proportion of males and females from the dataset with no regard for their merits as potential employees - this doesn't seem like an ideal approach. A better approach would be to hire an equal proportion of males and females whom are qualified for the job. This leads us to equalized odds, which will be the focus of our project and the metric to which we will develop a new model to satisfy.
 
 ### Why equalized odds? 
 
-We are choosing to build a model that satisfies equalized odds to benefit the applicants in the dataset. Equalized odds will bring about similar true and false positive rates amongst males and females being hired in the dataset. This is good news for the applicants as they can rest assured they are not being discriminated against based on any external factors.
+We are choosing to build a model that satisfies equalized odds to benefit the applicants in the dataset. Equalized odds will bring about similar true and false positive rates amongst males and females being hired. This is good news for the applicants as they can rest assured they are not being discriminated against based on any external factors.
 
 ### Why not predictive value parity?
 
@@ -215,52 +216,47 @@ stats::step(object = full_model,
 
 From this backward feature selection, we can remove a few variables from our model. It also shows a positive value for 'genderM' which can indicate some gender bias in favor of males in the dataset.
 
-```{r, eval=F}
-# Create indicators
-Jobs <- Jobs %>% 
-  mutate(degreeType = as.numeric(as.factor(undergrad_degree)),
-         gender = ifelse(gender == "M", 1, 0),
-         work_experience = ifelse(work_experience == "Yes", 1, 0))
+We can also build a LASSO model and see what it deems are the most important features
 
-# Select vars
-xvars <- c("degreeType", "gender", "work_experience", "hsc_percentage", "degree_percentage", "mba_percent", "ssc_percentage")
-
-# Scale
-Jobs[ , xvars] <- scale(Jobs[ , xvars], center = TRUE, scale = TRUE)
-
-# Train Test split
-#set.seed(123)
-#train_ind <- sample(1:nrow(Jobs), floor(0.8 * nrow(Jobs)))
-#set.seed(NULL)
-
-#Train <- Jobs[train_ind, ]
-#Test <- Jobs[-train_ind, ]
-
-#Build model with indicator as the response
-#model1 <- glm(Placed ~ degreeType + gender + work_experience + hsc_percentage + degree_percentage + mba_percent + ssc_percentage, family = "binomial", data = Jobs)
-model1 <- glm(Placed ~ gender + ssc_percentage, family = "binomial", data = Jobs)
-summary(model1)
-#Establish threshold
-threshold <- 0.5
-
-#Find predicted probabilities for all in dataset
-pred_prob <- predict(model1, newdata = Jobs, type = "response")
-
-#Predict survival
-pred_surv <- ifelse(pred_prob > threshold, 1, 0)
+```{r}
+#Put data frame in form needed for glmnet
+Xmat <- model.matrix(Placed ~ . -status, data = Jobs)[ ,-1]
+y <- Jobs$Placed
+# Build LASSO model
+set.seed(42)
+cv.out <- cv.glmnet(x = Xmat, y = y, 
+                    alpha = 1, standardize = TRUE,
+                    nfolds = 10)
+set.seed(NULL)
+plot(cv.out)
 ```
 
-Here we see that including another variable in our model, *ssc_percentage*, shows a greater importance amongst the gender variable.
+Let's select the largest lambda value within 1 standard deviation of the minimum. This will provide us with a lambda value that will apply more regularization and thus narrow down our features to only the most important.
+
+```{r}
+bestlam1 <- cv.out$lambda.1se
+#Predict the responses for the test set (use for MSE/RMSE calc)
+lasso.pred1 <- predict(cv.out , s = bestlam1,
+                      newx = Xmat)
+#Find the coefficients
+lasso.coef1 <- predict(cv.out , s = bestlam1,
+                      type = "coefficients")
+bestlam1
+lasso.coef1
+```
+
+This lambda value applies a lot of regularization which allows us to see the most important variables when it comes to a candidate being placed.
+
+We'll now build a model containing only the selected features of ssc_percentage, mba_percent, and degree_percentage.
 
 ```{r}
 log_reg <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentage, family = "binomial", data = Jobs)
 summary(log_reg)
 ```
 
-(Talk about the factor increase when candidate is male, i.e., e^1.308)
-What this model is telling us is, that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of a female. Alternatively, we can say that a male candidate has 270% $$3.7 - 1 = 2.7$$ more odds of being hired than a female candidate.
+The gender coefficient has a positive value associated with being male and is statistically signficant with a p-value of less than 0.05. We can deduce that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of a being hired if they were female. Alternatively, we can say that a male candidate has 270% $$3.7 - 1 = 2.7$$ greater odds of being hired than a female candidate.
 
-Now let's analyze these features and their relationships with gender
+Let's visualize these features with respect to gender.
 
 ```{r}
 # Reload dataset
@@ -436,6 +432,5 @@ confusionMatrix(data = as.factor(female_pred),
 ```
 
 Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, between genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females, which should satisfy employers.
-
 
 

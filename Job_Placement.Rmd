@@ -176,6 +176,16 @@ Jobs %>%
        y = "Count")
 ```
 
+```{r}
+# Proportion of males and females with previous work experience
+Jobs %>% 
+  count(gender, work_experience) %>% 
+  group_by(gender) %>% 
+  summarize(work_experience = work_experience, 
+            prop = n / sum(n))
+```
+
+
 We can see a greater proportion of females don't have previous work experience. This could factor into he decision maker's process when selecting candidates to place into a job.
 
 Now that we know roughly what our data looks like when comparing amongst genders, we can begin building some initial models to help us determine which features are most important and which ones to include in our final model.
@@ -254,7 +264,7 @@ log_reg <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentag
 summary(log_reg)
 ```
 
-The gender coefficient has a positive value associated with being male and is statistically signficant with a p-value of less than 0.05. We can deduce that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of a being hired if they were female. Alternatively, we can say that a male candidate has 270% $$3.7 - 1 = 2.7$$ greater odds of being hired than a female candidate.
+The gender coefficient has a positive value associated with being male and is statistically signficant with a p-value of less than 0.05. We can deduce that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of a being hired if they were female.
 
 Let's visualize these features with respect to gender.
 
@@ -432,5 +442,7 @@ confusionMatrix(data = as.factor(female_pred),
 ```
 
 Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, between genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females, which should satisfy employers.
+
+One important thing to note with our model is that we opted to exclude previous work experience as a factor in the model's decision making. Going back to the data, we found that males had a higher rate than females in regards to work experience, 37.4% to 28.9% respectively, this feature can reinforce the gender disparity between placement rates. And because the dataset is comprised of individuals applying for entry-level positions, previous work experience shouldn't have a large impact.
 
 

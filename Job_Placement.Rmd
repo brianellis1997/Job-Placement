@@ -124,8 +124,8 @@ We don't see a statistically significant result when comparing males and females
 ```{r}
 # Visualize distributions of test scores across gender
 Jobs %>% 
-  ggplot(aes(x = ssc_percentage, group = gender, fill = gender, alpha = 0.3)) +
-  geom_density() +
+  ggplot(aes(x = ssc_percentage, group = gender, fill = gender)) +
+  geom_density(alpha = 0.5) +
   labs(title = "Senior secondary exams percentage (10th Grade)",
        x = "Percent",
        y = "Density")
@@ -133,8 +133,8 @@ Jobs %>%
 
 ```{r}
 Jobs %>% 
-  ggplot(aes(x = hsc_percentage, group = gender, fill = gender, alpha = 0.3)) +
-  geom_density() +
+  ggplot(aes(x = hsc_percentage, group = gender, fill = gender)) +
+  geom_density(alpha = 0.5) +
   labs(title = "Higher secondary exams percentage (12th Grade)",
        x = "Percent",
        y = "Density")
@@ -151,8 +151,8 @@ Jobs %>%
 
 ```{r}
 Jobs %>% 
-  ggplot(aes(x = mba_percent, group = gender, fill = gender, alpha = 0.3)) +
-  geom_density() +
+  ggplot(aes(x = mba_percent, group = gender, fill = gender)) +
+  geom_density(alpha = 0.5) +
   labs(title = "MBA Test Percentage",
        x = "Percent",
        y = "Density")
@@ -160,8 +160,8 @@ Jobs %>%
 
 ```{r}
 Jobs %>% 
-  ggplot(aes(x = degree_percentage, group = gender, fill = gender, alpha = 0.3)) +
-  geom_density() +
+  ggplot(aes(x = degree_percentage, group = gender, fill = gender)) +
+  geom_density(alpha = 0.5) +
   labs(title = "Degree Percentage",
        x = "Percent",
        y = "Density")
@@ -189,6 +189,7 @@ Jobs %>%
 We can see a greater proportion of females don't have previous work experience. This could factor into he decision maker's process when selecting candidates to place into a job.
 
 Now that we know roughly what our data looks like when comparing amongst genders, we can begin building some initial models to help us determine which features are most important and which ones to include in our final model.
+
 
 ## Model Exploration
 
@@ -264,7 +265,7 @@ log_reg <- glm(Placed ~ gender + ssc_percentage + mba_percent + degree_percentag
 summary(log_reg)
 ```
 
-The gender coefficient has a positive value associated with being male and is statistically signficant with a p-value of less than 0.05. We can deduce that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of a being hired if they were female.
+The gender coefficient has a positive value associated with being male and is statistically signficant with a p-value of less than 0.05. We can deduce that if a candidate is male, i.e., has a value of 1 for their gender variable, then their odds of being hired are $$e^{1.30837} \approx 3.7$$ times the odds of being hired if they were female.
 
 Let's visualize these features with respect to gender.
 
@@ -275,7 +276,9 @@ Jobs <- read.csv("~/Downloads/Job_Placement_Data.csv")
 Jobs %>% 
   ggplot(aes(x = gender, y = ssc_percentage)) +
   geom_point(aes(color = status), position = "jitter") +
-  geom_boxplot(aes(alpha = 0.1))
+  geom_boxplot(aes(alpha = 0.1)) +
+  labs(x = "Gender",
+       y = "Senior Secondary Exam %")
 ```
 
 Even though Females scored higher overall ssc_percentage, males were still hired at a greater rate. This shows gender is a greater predictor for placement as compared with ssc_percentage, a variable we originally thought of as the most important.
@@ -285,7 +288,9 @@ Even though Females scored higher overall ssc_percentage, males were still hired
 Jobs %>% 
   ggplot(aes(x = gender, y = mba_percent)) +
   geom_point(aes(color = status), position = "jitter") +
-  geom_boxplot(aes(alpha = 0.1))
+  geom_boxplot(aes(alpha = 0.1)) +
+  labs(x = "Gender",
+       y = "MBA Exam %")
 ```
 
 
@@ -293,7 +298,9 @@ Jobs %>%
 Jobs %>% 
   ggplot(aes(x = gender, y = degree_percentage)) +
   geom_point(aes(color = status), position = "jitter") +
-  geom_boxplot(aes(alpha = 0.1))
+  geom_boxplot(aes(alpha = 0.1)) +
+  labs(x = "Gender",
+       y = "Undergraduate Degree %")
 ```
 
 For all these variables that are important for the placement, females have a higher overall score. So why do males have a higher job placement probability than females?
@@ -431,14 +438,19 @@ female_pred <- ifelse(female_prob > female_thresh, 1, 0)
 
 # Create confusion matrices
 # Male matrix
-confusionMatrix(data = as.factor(male_pred),
+male_matrix <- confusionMatrix(data = as.factor(male_pred),
                 reference = as.factor(Males$Placed),
                 positive = "1")
 
 # Female matrix
-confusionMatrix(data = as.factor(female_pred),
+female_matrix <- confusionMatrix(data = as.factor(female_pred),
                 reference = as.factor(Females$Placed),
                 positive = "1")
+
+cat("Male confusion matrix:\n")
+print(male_matrix)
+cat("Female confusion matrix:\n")
+print(female_matrix)
 ```
 
 Based on the confusion matrices produced for males and females respectively, we see that the model gives equal sensitivity rates, 89%, between genders with the adjusted threshold values. This new model satisfies equalized odds while generating a reasonable level of accuracy, 86.33% for males and 82.89% for females, which should satisfy employers.
